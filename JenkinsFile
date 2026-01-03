@@ -1,0 +1,49 @@
+pipeline {
+    agent any
+    parameters {
+        string(
+            name: 'GIT_REPO',
+            description: 'Enter GitHub Repo',
+            defaultValue: 'https://github.com/rounakjain/jenkins-ci-cd.git'
+        )
+    }
+    environment {
+    DOCKER_CREDS = credentials('dockerhub')
+    DOCKER_IMAGE = "rounak405/jekins-project:${BUILD_NUMBER}"
+}
+    stages {
+        stage('Checkout and Build') {
+            steps {
+                git url: params.GIT_REPO, branch: 'main'
+                sh 'mvn clean package -B'
+            }
+        }
+   stage('Docker Build') {
+            steps {
+                sh '''
+                  docker build -t $DOCKER_IMAGE .
+                '''
+    }
+}
+    stage('Push Docker image') {
+    steps {
+        sh '''
+          echo "$DOCKER_CREDS_PSW" | docker login -u "$DOCKER_CREDS_USR" --password-stdin
+          docker push $DOCKER_IMAGE
+        '''
+    }
+}
+stage('Deploy with Helm') {
+    steps {
+        sh '''
+          IMAGE_REPO=$(echo "$DOCKER_IMAGE" | cut -d: -f1)
+          IMAGE_TAG=$(echo "$DOCKER_IMAGE" | cut -d: -f2)
+
+          helm upgrade --install demo-app ./helm-chart \
+            --set image.repository=$IMAGE_REPO \
+            --set image.tag=$IMAGE_TAG
+        '''
+    }
+}
+            }
+        }
